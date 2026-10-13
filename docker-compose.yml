@@ -1,0 +1,56 @@
+name: marketops
+
+services:
+  db:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-marketops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-marketops-local-only}
+      POSTGRES_DB: ${POSTGRES_DB:-marketops}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  backend:
+    build:
+      context: ./backend
+    image: marketops-backend:1.0.0
+    profiles: ["app"]
+    environment:
+      MARKETOPS_ENVIRONMENT: production
+      MARKETOPS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-marketops}:${POSTGRES_PASSWORD:-marketops-local-only}@db:5432/${POSTGRES_DB:-marketops}
+      MARKETOPS_ALLOWED_ORIGINS: ${MARKETOPS_PROXY_ORIGINS:-["http://localhost:8080","https://localhost:8443"]}
+      MARKETOPS_COOKIE_SECURE: ${MARKETOPS_PROXY_COOKIE_SECURE:-false}
+      MARKETOPS_SIMULATOR_SEED: ${MARKETOPS_SIMULATOR_SEED:-20261013}
+      DEMO_OPERATOR_PASSWORD: ${DEMO_OPERATOR_PASSWORD:-}
+      DEMO_OPERATOR2_PASSWORD: ${DEMO_OPERATOR2_PASSWORD:-}
+      DEMO_VIEWER_PASSWORD: ${DEMO_VIEWER_PASSWORD:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready').status==200 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  web:
+    build:
+      context: ./frontend
+    image: marketops-web:1.0.0
+    profiles: ["app"]
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:

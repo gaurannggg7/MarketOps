@@ -1,0 +1,114 @@
+"""Request authentication: session cookie → user, CSRF + Origin checks, role guards."""
+
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+
+from fastapi import Depends, Request
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.security import digest_matches, token_digest
+from app.config import Settings
+from app.db import get_session
+from app.errors import AppError, forbidden
+from app.models import Role, User
+from app.models import Session as DbSession
+
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+LAST_SEEN_WRITE_INTERVAL = timedelta(seconds=60)
+
+
+@dataclass(frozen=True)
+class CurrentUser:
+    id: uuid.UUID
+    email: str
+    display_name: str
+    role: Role
+    session_id: uuid.UUID
+    csrf_token_hash: str
+
+    @property
+    def is_operator(self) -> bool:
+        return self.role == Role.OPERATOR
+
+
+def unauthenticated() -> AppError:
+    return AppError(401, "UNAUTHENTICATED", "Sign in to continue. Your session may have expired.")
+
+
+def origin_allowed(settings: Settings, origin: str | None) -> bool:
+    return origin is not None and origin in settings.allowed_origins
+
+
+def check_origin(request: Request) -> None:
+    settings: Settings = request.app.state.settings
+    if not origin_allowed(settings, request.headers.get("origin")):
+        raise AppError(
+            403, "ORIGIN_REJECTED", "This request did not come from an allowed MarketOps origin."
+        )
+
+
+async def resolve_session(
+    db: AsyncSession, settings: Settings, token: str | None, now: datetime
+) -> CurrentUser | None:
+    """Return the active session's user, applying idle and absolute expiry."""
+    if not token:
+        return None
+    row = (
+        await db.execute(
+            select(DbSession, User)
+            .join(User, User.id == DbSession.user_id)
+            .where(DbSession.token_hash == token_digest(token))
+        )
+    ).first()
+    if row is None:
+        return None
+    sess, user = row
+    idle_deadline = sess.last_seen_at + timedelta(minutes=settings.session_idle_minutes)
+    if sess.revoked_at is not None or not user.is_active or now >= sess.expires_at:
+        return None
+    if now >= idle_deadline:
+        return None
+    if now - sess.last_seen_at >= LAST_SEEN_WRITE_INTERVAL:
+        await db.execute(update(DbSession).where(DbSession.id == sess.id).values(last_seen_at=now))
+        await db.commit()
+    return CurrentUser(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        role=user.role,
+        session_id=sess.id,
+        csrf_token_hash=sess.csrf_token_hash,
+    )
+
+
+async def current_user(request: Request, db: AsyncSession = Depends(get_session)) -> CurrentUser:
+    settings: Settings = request.app.state.settings
+    user = await resolve_session(
+        db,
+        settings,
+        request.cookies.get(settings.session_cookie_name),
+        request.app.state.clock.now(),
+    )
+    if user is None:
+        raise unauthenticated()
+    if request.method in UNSAFE_METHODS:
+        check_origin(request)
+        csrf = request.headers.get("x-csrf-token", "")
+        if not csrf or not digest_matches(csrf, user.csrf_token_hash):
+            raise AppError(
+                403,
+                "CSRF_REJECTED",
+                "Security token missing or expired. Reload the page and retry.",
+            )
+    request.state.user_id = str(user.id)
+    return user
+
+
+async def require_operator(user: CurrentUser = Depends(current_user)) -> CurrentUser:
+    if not user.is_operator:
+        raise forbidden("Viewers have read-only access. Ask an operator to make this change.")
+    return user
