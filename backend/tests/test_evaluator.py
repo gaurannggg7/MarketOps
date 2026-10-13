@@ -72,6 +72,7 @@ async def test_heartbeats_do_not_freshen_and_stale_opens_one_incident(
     assert len(opened) == 1
     assert opened[0].instrument_id == target
     assert "no quote received" in opened[0].trigger_reason
+    assert "(threshold 10s)" in opened[0].trigger_reason
     assert rt.evaluator.compute_stale_ids(clock.now()) == frozenset({target})
     await advance(rt, clock, 5, {target})  # repeated evaluation: still one incident
     assert len(await incidents(app)) == 1

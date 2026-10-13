@@ -7,7 +7,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import runtime_of
-from app.auth.deps import CurrentUser, check_origin, current_user
+from app.auth.deps import CurrentUser, check_origin, current_user, resolve_session
 from app.auth.security import (
     LoginThrottle,
     derive_csrf_token,
@@ -20,7 +20,14 @@ from app.db import get_session
 from app.errors import AppError
 from app.models import Role, User
 from app.models import Session as DbSession
-from app.schemas.api import ErrorResponse, LoginRequest, OperatorOut, SessionOut, UserOut
+from app.schemas.api import (
+    ErrorResponse,
+    LoginRequest,
+    OperatorOut,
+    SessionOut,
+    SessionState,
+    UserOut,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -124,6 +131,28 @@ async def me(
     csrf = derive_csrf_token(request.cookies.get(settings.session_cookie_name, ""))
     return SessionOut(
         user=UserOut.model_validate(db_user), csrf_token=csrf, expires_at=sess.expires_at
+    )
+
+
+@router.get("/session", response_model=SessionState)
+async def session_state(request: Request, db: AsyncSession = Depends(get_session)) -> SessionState:
+    """Same as /me for a signed-in browser, but reports signed-out as 200 instead of 401."""
+    settings: Settings = request.app.state.settings
+    token = request.cookies.get(settings.session_cookie_name)
+    user = await resolve_session(db, settings, token, request.app.state.clock.now())
+    if user is None or token is None:
+        return SessionState(authenticated=False)
+    sess = await db.get(DbSession, user.session_id)
+    db_user = await db.get(User, user.id)
+    if sess is None or db_user is None:
+        return SessionState(authenticated=False)
+    return SessionState(
+        authenticated=True,
+        session=SessionOut(
+            user=UserOut.model_validate(db_user),
+            csrf_token=derive_csrf_token(token),
+            expires_at=sess.expires_at,
+        ),
     )
 
 

@@ -31,6 +31,7 @@ from app.models import (
     User,
 )
 from app.services.audit import add_audit
+from app.services.market_math import fmt
 
 MAX_NOTE_LENGTH = 4000
 
@@ -60,11 +61,11 @@ def _reason(rule: RuleRef, evidence: dict[str, Any]) -> str:
     if rule.rule_type == RuleType.STALE:
         return (
             f"{rule.symbol}: no quote received for {evidence.get('age_seconds')}s "
-            f"(threshold {rule.threshold}s)"
+            f"(threshold {fmt(rule.threshold)}s)"
         )
     return (
         f"{rule.symbol}: spread {evidence.get('spread_bps')} bps exceeds "
-        f"threshold {rule.threshold} bps"
+        f"threshold {fmt(rule.threshold)} bps"
     )
 
 

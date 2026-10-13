@@ -17,3 +17,4 @@ infra/certs/*.pem
 infra/certs/*.key
 benchmarks/out/
 *.log
+.claude/settings.local.json

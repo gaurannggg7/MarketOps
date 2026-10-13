@@ -46,6 +46,13 @@ class SessionOut(BaseModel):
     expires_at: datetime
 
 
+class SessionState(BaseModel):
+    """Bootstrap probe: 200 whether or not the browser is signed in (avoids 401 console noise)."""
+
+    authenticated: bool
+    session: SessionOut | None = None
+
+
 class OperatorOut(ApiModel):
     id: uuid.UUID
     display_name: str
