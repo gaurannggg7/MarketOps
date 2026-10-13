@@ -18,3 +18,5 @@ infra/certs/*.key
 benchmarks/out/
 *.log
 .claude/settings.local.json
+frontend/.vitest/
+.claude/
