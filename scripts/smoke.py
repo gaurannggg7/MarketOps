@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import ssl
 import sys
 import time
 from pathlib import Path
@@ -23,6 +24,8 @@ import websockets
 from dotenv import dotenv_values
 
 BASE = os.environ.get("MARKETOPS_URL", "http://localhost:8080").rstrip("/")
+# Only for the local self-signed TLS overlay; never use against a real deployment.
+INSECURE = os.environ.get("MARKETOPS_SMOKE_INSECURE") == "1"
 ROOT = Path(__file__).resolve().parent.parent
 results: list[tuple[str, bool, str]] = []
 
@@ -44,10 +47,18 @@ def password() -> str:
     return pw
 
 
+def _ssl_context() -> ssl.SSLContext:
+    ctx = ssl.create_default_context()
+    if INSECURE:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 async def main() -> int:
     origin = BASE
     async with httpx.AsyncClient(
-        base_url=BASE, headers={"Origin": origin}, timeout=10
+        base_url=BASE, headers={"Origin": origin}, timeout=10, verify=not INSECURE
     ) as c:
         r = await c.get("/api/v1/health/ready")
         record("readiness", r.status_code == 200, r.text[:120])
@@ -74,6 +85,7 @@ async def main() -> int:
                 ws_url,
                 origin=origin,
                 additional_headers={"Cookie": f"marketops_session={cookie}"},
+                ssl=_ssl_context() if ws_url.startswith("wss") else None,
             ) as ws:
                 snap = json.loads(await asyncio.wait_for(ws.recv(), 5))
                 record(
@@ -85,21 +97,19 @@ async def main() -> int:
                 got_delta = False
                 while time.monotonic() < deadline and not got_delta:
                     msg = json.loads(await asyncio.wait_for(ws.recv(), 5))
-                    got_delta = (
-                        msg.get("type") == "delta" and msg.get("seq") == snap["seq"] + 1
-                    )
+                    got_delta = msg.get("type") == "delta" and msg.get("seq") == snap["seq"] + 1
                 record("quote update (consecutive delta)", got_delta)
-        except Exception as exc:  # report and continue with remaining checks
+        except (OSError, TimeoutError, websockets.WebSocketException, ValueError) as exc:
             record("websocket upgrade + snapshot", False, type(exc).__name__)
 
-        target = items[-1]
+        # An instrument with no unresolved incident, so a new breach opens a new incident.
+        candidates = [i for i in items if i["active_incident_count"] == 0]
+        target = candidates[-1] if candidates else items[-1]
         name = f"smoke-{int(time.time())}"
         wl = (await c.post("/api/v1/watchlists", json={"name": name})).json()
         await c.post(f"/api/v1/watchlists/{wl['id']}/items/{target['id']}")
         lists = (await c.get("/api/v1/watchlists")).json()
-        persisted = any(
-            w["id"] == wl["id"] and target["id"] in w["instrument_ids"] for w in lists
-        )
+        persisted = any(w["id"] == wl["id"] and target["id"] in w["instrument_ids"] for w in lists)
         record("watchlist persistence", persisted)
         await c.delete(f"/api/v1/watchlists/{wl['id']}")
 
@@ -111,9 +121,7 @@ async def main() -> int:
                 "duration_seconds": 60,
             },
         )
-        scenario_id = (
-            r.json().get("scenario", {}).get("id") if r.status_code == 201 else None
-        )
+        scenario_id = r.json().get("scenario", {}).get("id") if r.status_code == 201 else None
         incident = None
         deadline = time.monotonic() + 40
         while scenario_id and time.monotonic() < deadline and incident is None:
@@ -136,11 +144,20 @@ async def main() -> int:
                 f"#{incident['number']} {target['symbol']}",
             )
         else:
-            record(
-                "incident transition (OPEN → ACKNOWLEDGED)", False, "no incident opened"
-            )
+            record("incident transition (OPEN → ACKNOWLEDGED)", False, "no incident opened")
         if scenario_id:
             await c.delete(f"/api/v1/demo/scenarios/{scenario_id}")
+        if incident:  # clean up: wait for recovery, then resolve the smoke incident
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                cur = (await c.get(f"/api/v1/incidents/{incident['id']}")).json()
+                if not cur["condition_active"]:
+                    await c.post(
+                        f"/api/v1/incidents/{incident['id']}/resolve",
+                        json={"version": cur["version"], "resolution_note": "Smoke check cleanup."},
+                    )
+                    break
+                await asyncio.sleep(1)
     failed = [n for n, ok, _ in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} smoke checks passed")
     return 1 if failed else 0

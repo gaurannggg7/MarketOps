@@ -89,9 +89,7 @@ async def stream_client(base: str, cookie: str, stop: asyncio.Event, out: dict) 
                         last = msg["seq"]
                         deltas += 1
                         quotes += len(msg["quotes"])
-                        lags.append(
-                            (now - datetime.fromisoformat(msg["ts"]).timestamp()) * 1000
-                        )
+                        lags.append((now - datetime.fromisoformat(msg["ts"]).timestamp()) * 1000)
                     elif msg["type"] == "resync":
                         break
         except (websockets.ConnectionClosed, OSError):
@@ -146,7 +144,7 @@ def rss_mb(pid: int) -> float | None:
 
 def backend_pid(port: int) -> int | None:
     out = subprocess.run(
-        ["lsof", "-t", f"-iTCP:{port}", "-sTCP:LISTEN"], capture_output=True, text=True
+        ["lsof", "-t", f"-iTCP:{port}", "-sTCP:LISTEN"], check=False, capture_output=True, text=True
     )
     pids = [int(p) for p in out.stdout.split()]
     return pids[0] if pids else None
@@ -171,9 +169,7 @@ async def measure_recovery(base: str) -> float | None:
         url, origin=base, additional_headers=headers, max_size=8_000_000
     ) as ws:
         snap = json.loads(await ws.recv())
-        elapsed = (
-            (time.perf_counter() - t0) * 1000 if snap["type"] == "snapshot" else None
-        )
+        elapsed = (time.perf_counter() - t0) * 1000 if snap["type"] == "snapshot" else None
     await c.aclose()
     return round(elapsed, 1) if elapsed else None
 
@@ -186,9 +182,7 @@ async def main() -> None:
     ap.add_argument("--rest-concurrency", type=int, default=4)
     args = ap.parse_args()
     if not PASSWORD:
-        raise SystemExit(
-            "Set DEMO_OPERATOR_PASSWORD (the bench DB uses the .env demo passwords)."
-        )
+        raise SystemExit("Set DEMO_OPERATOR_PASSWORD (the bench DB uses the .env demo passwords).")
     base = args.url.rstrip("/")
     port = int(base.rsplit(":", 1)[1])
     pid = backend_pid(port)
@@ -253,9 +247,7 @@ async def main() -> None:
             "instruments": len(insts),
             "configured_updates_per_second": status["configured_updates_per_second"],
         },
-        "server_observed_quotes_per_second_at_end": status[
-            "observed_quotes_per_second"
-        ],
+        "server_observed_quotes_per_second_at_end": status["observed_quotes_per_second"],
         "stream": stream_results,
         "stream_client_quotes_per_second": [
             round(r["quotes"] / args.duration, 1) for r in stream_results
