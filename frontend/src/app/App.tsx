@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
-import { Spinner } from "../components/ui";
+import { ErrorNotice, Spinner } from "../components/ui";
+import { ApiError, errorMessage } from "../lib/api/client";
 import { LoginPage } from "../features/auth/LoginPage";
 import { useAuth } from "../lib/auth";
 import { StreamProvider } from "../lib/stream/StreamProvider";
@@ -13,12 +14,21 @@ const IncidentDetailPage = lazy(() => import("../features/incidents/IncidentDeta
 const SystemPage = lazy(() => import("../features/system/SystemPage"));
 
 function Authenticated() {
-  const { user, loading } = useAuth();
+  const { user, loading, error, retry } = useAuth();
   const location = useLocation();
   if (loading) {
     return (
       <div className="grid h-full place-items-center">
         <Spinner label="Checking session…" />
+      </div>
+    );
+  }
+  if (error && !user) {
+    return (
+      <div className="mx-auto mt-16 max-w-lg p-4">
+        <ErrorNotice
+          title={error instanceof ApiError && error.code === "PERSISTENCE_UNAVAILABLE" ? "Database unavailable" : "Cannot reach MarketOps"}
+          message={`${errorMessage(error)} Your session was not checked; retry once the server is available.`} onRetry={retry} />
       </div>
     );
   }

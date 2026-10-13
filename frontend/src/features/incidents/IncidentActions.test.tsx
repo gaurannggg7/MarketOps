@@ -12,6 +12,8 @@ function renderActions(incident: Schemas["IncidentDetail"], isOperator: boolean)
   const auth: AuthValue = {
     user: userFixture(isOperator ? "OPERATOR" : "VIEWER"),
     loading: false,
+    error: null,
+    retry: () => undefined,
     isOperator,
     login: () => Promise.resolve(),
     logout: () => Promise.resolve(),

@@ -14,7 +14,8 @@ async function fetchMe() {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const me = useQuery({ queryKey: ME_KEY, queryFn: fetchMe, retry: 1, staleTime: 60_000 });
+  const me = useQuery({ queryKey: ME_KEY, queryFn: fetchMe, retry: false, staleTime: 60_000 });
+  const { refetch } = me;
 
   useEffect(() => {
     // Any 401 from the API means the session expired or was revoked: drop to the login screen.
@@ -49,11 +50,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user: me.data ?? null,
       loading: me.isPending,
+      error: me.isError ? me.error : null,
+      retry: () => void refetch(),
       isOperator: me.data?.role === "OPERATOR",
       login,
       logout,
     }),
-    [me.data, me.isPending, login, logout],
+    [me.data, me.isPending, me.isError, me.error, refetch, login, logout],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

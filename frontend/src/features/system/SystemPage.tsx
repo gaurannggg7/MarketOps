@@ -19,6 +19,7 @@ export default function SystemPage() {
     queryKey: ["system", "status"],
     queryFn: () => call(api.GET("/api/v1/system/status")),
     refetchInterval: 2000,
+    refetchIntervalInBackground: true, // an ops status page should stay current in a background tab
     retry: false,
   });
 
@@ -32,11 +33,14 @@ export default function SystemPage() {
       </div>
       <ClientStream />
       {status.isError ? (
-        <ErrorNotice
-          title={status.error instanceof ApiError && status.error.status >= 500 ? "Server status unavailable" : "Could not load status"}
-          message={`${errorMessage(status.error)} The live stream may still be working; see Client stream above.`}
-          onRetry={() => void status.refetch()}
-        />
+        <>
+          <ErrorNotice
+            title={status.error instanceof ApiError && status.error.status >= 500 ? "Server status unavailable" : "Could not load status"}
+            message={`${errorMessage(status.error)} The live stream may still be working; see Client stream above.`}
+            onRetry={() => void status.refetch()}
+          />
+          <ReadinessFallback />
+        </>
       ) : !status.data ? (
         <Spinner label="Loading status…" />
       ) : (
@@ -61,8 +65,33 @@ function ClientStream() {
         <Stat label="Snapshots" value={fmtInt(stats.snapshots)} hint="Each (re)connection starts from a fresh snapshot" />
         <Stat label="Duplicates ignored" value={fmtInt(stats.duplicates)} />
         <Stat label="Gaps / epoch changes" value={`${stats.gaps} / ${stats.epochChanges}`} tone={stats.gaps ? "warn" : undefined} />
-        <Stat label="Last message" value={lastMessageAt ? `${((now - lastMessageAt) / 1000).toFixed(0)}s ago` : "—"} />
+        <Stat label="Last message" value={lastMessageAt ? `${Math.max(0, (now - lastMessageAt) / 1000).toFixed(0)}s ago` : "—"} />
       </div>
+    </Panel>
+  );
+}
+
+/** Public readiness probe; still answers when the database (and therefore sign-in) is down. */
+function ReadinessFallback() {
+  const ready = useQuery({
+    queryKey: ["system", "ready"],
+    queryFn: async () => {
+      const r = await fetch("/api/v1/health/ready", { credentials: "same-origin" });
+      return (await r.json()) as Schemas["HealthOut"];
+    },
+    refetchInterval: 2000,
+  });
+  if (!ready.data) return null;
+  return (
+    <Panel title="Readiness checks (public probe)">
+      <ul className="grid gap-2 sm:grid-cols-3">
+        {Object.entries(ready.data.checks).map(([name, value]) => (
+          <li key={name} className="flex items-center justify-between gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm">
+            <span className="font-medium capitalize">{name}</span>
+            <Pill tone={value === "ok" ? "good" : "bad"}>{value}</Pill>
+          </li>
+        ))}
+      </ul>
     </Panel>
   );
 }

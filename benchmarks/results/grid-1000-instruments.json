@@ -1,0 +1,20 @@
+{
+  "browser": "chromium",
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  },
+  "instrumentsFreshAtEnd": "1,000",
+  "navigationToRowsMs": 481,
+  "scrollSeconds": 10,
+  "scroller": "ag-grid-viewport ag-layout-normal (scrollHeight 30033px)",
+  "frames": 601,
+  "fps": 60.1,
+  "frameMs": {
+    "p50": 16.699999999999818,
+    "p95": 16.700000000000728,
+    "p99": 16.800000000000182,
+    "max": 16.80000000000109
+  },
+  "longFramesOver50ms": 0
+}

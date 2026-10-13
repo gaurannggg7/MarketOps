@@ -412,7 +412,7 @@ export default function MonitorPage() {
       </div>
       {toggleMember.isError ? <Notice tone="bad">Watchlist change failed: {errorMessage(toggleMember.error)}</Notice> : null}
 
-      <div className="min-h-[420px] flex-1 overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="h-[70vh] min-h-[420px] overflow-hidden rounded-lg border border-slate-200 bg-white md:h-auto md:flex-1">
         {initialRows === null ? (
           <div className="p-6">
             <Spinner label="Loading instruments…" />

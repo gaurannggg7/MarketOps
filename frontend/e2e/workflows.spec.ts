@@ -3,6 +3,25 @@ import { OPERATOR, VIEWER, csrf, instrumentBySymbol, login } from "./helpers";
 
 const ORIGIN = "http://localhost:5174";
 
+// Gate (BUILD_PLAN M4): no uncaught page errors or console errors during any workflow.
+// Tests that deliberately provoke an HTTP error may list its status; Chrome logs those responses.
+let consoleErrors: string[] = [];
+let expectedStatuses: number[] = [];
+test.beforeEach(({ page }) => {
+  consoleErrors = [];
+  expectedStatuses = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+  page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
+});
+test.afterEach(() => {
+  const unexpected = consoleErrors.filter(
+    (text) => !expectedStatuses.some((status) => text.includes(`status of ${status} `)),
+  );
+  expect(unexpected, unexpected.join("\n")).toEqual([]);
+});
+
 test("1. watchlist membership persists across reload", async ({ page }) => {
   await login(page, OPERATOR);
   const name = `E2E ${Date.now()}`;
@@ -131,6 +150,7 @@ test("4. disconnect → resynchronization → live values resume without duplica
 });
 
 test("5. invalid threshold and stale-version edit show actionable messages", async ({ page }) => {
+  expectedStatuses = [409]; // the stale-version save is supposed to be rejected
   await login(page, OPERATOR);
   const target = await instrumentBySymbol(page.request, 11);
   await page.goto(`/instruments/${target.id}`);

@@ -6,6 +6,9 @@ export type User = Schemas["UserOut"];
 export interface AuthValue {
   user: User | null;
   loading: boolean;
+  /** Set when the session probe itself failed (server unreachable), not when signed out. */
+  error: unknown;
+  retry: () => void;
   isOperator: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;

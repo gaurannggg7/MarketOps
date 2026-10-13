@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PGUSER: marketops
+  PGPASSWORD: marketops-local-only
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17.11-alpine
+        env:
+          POSTGRES_USER: marketops
+          POSTGRES_PASSWORD: marketops-local-only
+          POSTGRES_DB: marketops
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U marketops" --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      MARKETOPS_DATABASE_URL: postgresql+psycopg://marketops:marketops-local-only@localhost:55432/marketops
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install (hashed lockfile)
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install --require-hashes -r backend/requirements-dev.lock
+      - name: Ruff
+        working-directory: backend
+        run: .venv/bin/ruff check . && .venv/bin/ruff format --check .
+      - name: mypy (strict)
+        working-directory: backend
+        run: .venv/bin/mypy app tests
+      - name: Migrations apply and match models
+        working-directory: backend
+        run: .venv/bin/alembic upgrade head && .venv/bin/alembic check
+      - name: pytest (PostgreSQL)
+        working-directory: backend
+        run: .venv/bin/pytest -q
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: API contract drift
+        run: |
+          (cd frontend && npm ci)
+          make api-check
+
+  frontend:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-24.04
+    needs: [backend, frontend]
+    services:
+      postgres:
+        image: postgres:17.11-alpine
+        env:
+          POSTGRES_USER: marketops
+          POSTGRES_PASSWORD: marketops-local-only
+          POSTGRES_DB: marketops
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U marketops" --health-interval 2s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install --require-hashes -r backend/requirements-dev.lock
+      - working-directory: frontend
+        run: npm ci && npx playwright install --with-deps chromium
+      - working-directory: frontend
+        run: npx playwright test
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 7
+
+  images:
+    runs-on: ubuntu-24.04
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Secret scan (tracked files)
+        run: bash scripts/secret_scan.sh
+      - name: Build versioned images
+        run: docker compose --profile app build
+      - name: Image inventory
+        run: docker image ls 'marketops-*'
