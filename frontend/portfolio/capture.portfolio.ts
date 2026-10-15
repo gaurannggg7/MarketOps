@@ -51,6 +51,7 @@ test("capture portfolio screenshots", async ({ page }) => {
   await page.screenshot({ path: `${OUT}/04-system-status.png`, fullPage: true });
 
   await page.goto("/guide");
+  await expect(page.getByRole("heading", { name: "How to explore MarketOps" })).toBeVisible({ timeout: 60_000 });
   await page.screenshot({ path: `${OUT}/07-how-to-explore.png` });
 
   await page.setViewportSize({ width: 390, height: 844 });
