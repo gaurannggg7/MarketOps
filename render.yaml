@@ -32,7 +32,7 @@ services:
         value: "false"
       - key: MARKETOPS_QUOTE_RETENTION_HOURS
         value: "3"
-      - key: MARKETOPS_SEED_ON_START          # Render Free has no shell/one-off jobs
+      - key: MARKETOPS_STARTUP_BOOTSTRAP      # migrations + idempotent seed in-process (no shell on Free)
         value: "1"
       - key: DEMO_OPERATOR_PASSWORD
         generateValue: true
