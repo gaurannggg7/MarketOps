@@ -4,16 +4,24 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.auth.deps import origin_allowed, resolve_session
+from app.auth.deps import CurrentUser, origin_allowed, resolve_session, resolve_session_by_id
 from app.config import Settings
 from app.runtime import Runtime
-from app.streaming.hub import CLOSE_FORBIDDEN_ORIGIN, CLOSE_UNAUTHENTICATED, Connection, Control
+from app.streaming.hub import (
+    CLOSE_FORBIDDEN_ORIGIN,
+    CLOSE_TRY_AGAIN_LATER,
+    CLOSE_UNAUTHENTICATED,
+    Connection,
+    Control,
+)
 
 router = APIRouter()
+AUTH_TIMEOUT_SECONDS = 5.0
 log = logging.getLogger("marketops.ws")
 
 
@@ -29,11 +37,26 @@ async def market_stream(websocket: WebSocket) -> None:
         user = await resolve_session(
             db, settings, websocket.cookies.get(settings.session_cookie_name), runtime.clock.now()
         )
+    accepted = False
+    if user is None and settings.stream_ticket_auth_enabled:
+        # Split-origin mode: accept, then require {"type": "auth", "ticket": ...} within 5 s.
+        await websocket.accept()
+        accepted = True
+        user = await _authenticate_with_ticket(websocket, runtime, settings)
     if user is None:
-        await websocket.close(code=CLOSE_UNAUTHENTICATED)
+        with contextlib.suppress(RuntimeError, WebSocketDisconnect):
+            await websocket.close(code=CLOSE_UNAUTHENTICATED)
+        return
+    refusal = runtime.hub.admission_error(user.session_id)
+    if refusal is not None:
+        if not accepted:
+            await websocket.accept()
+        await websocket.send_text(json.dumps({"type": "resync", "reason": refusal}))
+        await websocket.close(code=CLOSE_TRY_AGAIN_LATER)
         return
 
-    await websocket.accept()
+    if not accepted:
+        await websocket.accept()
     conn, snapshot, watermark = await runtime.hub.register(
         user.id, user.session_id, runtime.clock.now()
     )
@@ -53,6 +76,27 @@ async def market_stream(websocket: WebSocket) -> None:
         pass
     finally:
         runtime.hub.unregister(conn)
+
+
+async def _authenticate_with_ticket(
+    websocket: WebSocket, runtime: Runtime, settings: Settings
+) -> CurrentUser | None:
+    try:
+        raw = await asyncio.wait_for(websocket.receive_text(), timeout=AUTH_TIMEOUT_SECONDS)
+        message = json.loads(raw)
+    except (TimeoutError, ValueError, WebSocketDisconnect, KeyError, RuntimeError):
+        return None
+    if not isinstance(message, dict) or message.get("type") != "auth":
+        return None
+    ticket = message.get("ticket")
+    if not isinstance(ticket, str) or len(ticket) > 256:
+        return None
+    grant = runtime.tickets.redeem(ticket, runtime.clock.now())
+    if grant is None:
+        return None
+    # The session must still be valid (not revoked or expired) when the ticket is redeemed.
+    async with websocket.app.state.sessionmaker() as db:
+        return await resolve_session_by_id(db, settings, grant.session_id, runtime.clock.now())
 
 
 async def _send_loop(websocket: WebSocket, conn: Connection, watermark: int) -> None:

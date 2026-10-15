@@ -10,6 +10,7 @@ const nav = [
   { to: "/", label: "Market monitor", end: true },
   { to: "/incidents", label: "Incidents", end: false },
   { to: "/system", label: "System status", end: false },
+  { to: "/guide", label: "How to explore", end: false },
 ];
 
 function OpenIncidentCount() {
@@ -43,7 +44,7 @@ function FreshnessSummary() {
 }
 
 export function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, publicDemo } = useAuth();
   return (
     <div className="flex min-h-full flex-col md:flex-row">
       <a href="#main" className="skip-link">
@@ -79,15 +80,26 @@ export function Layout() {
           <div className="ml-auto flex items-center gap-2 text-sm">
             {user ? (
               <>
-                <span className="hidden text-slate-600 sm:inline">{user.display_name}</span>
-                <Pill tone={user.role === "OPERATOR" ? "info" : "neutral"}>{user.role === "OPERATOR" ? "Operator" : "Viewer (read-only)"}</Pill>
+                {publicDemo ? null : <span className="hidden text-slate-600 sm:inline">{user.display_name}</span>}
+                <Pill tone={user.role === "OPERATOR" && !publicDemo ? "info" : "neutral"}>
+                  {publicDemo ? "Public demo (read-only)" : user.role === "OPERATOR" ? "Operator" : "Viewer (read-only)"}
+                </Pill>
                 <Button variant="ghost" onClick={() => void logout()}>
-                  Sign out
+                  {publicDemo ? "Exit demo" : "Sign out"}
                 </Button>
               </>
             ) : null}
           </div>
         </header>
+        {publicDemo ? (
+          <div role="note" className="border-b border-teal-200 bg-teal-50 px-4 py-1.5 text-xs text-teal-900">
+            Read-only public demo of a <strong>simulated</strong> market-operations console — synthetic prices, no exchange data.
+            An automated operator runs a market scenario every few minutes.{" "}
+            <NavLink to="/guide" className="font-medium underline">
+              How to explore
+            </NavLink>
+          </div>
+        ) : null}
         <main id="main" className="min-w-0 flex-1 p-3 md:p-5">
           <Outlet />
         </main>

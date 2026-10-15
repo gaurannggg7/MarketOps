@@ -1,0 +1,73 @@
+# Controlled release: runs ONLY when started manually, for a commit whose CI already passed.
+# Triggers Render and Vercel deploy hooks (repository secrets), then runs public smoke checks.
+# Nothing here runs on push. Configure secrets only after deployment is authorized:
+#   RENDER_DEPLOY_HOOK_URL, VERCEL_DEPLOY_HOOK_URL, SMOKE_OPERATOR_PASSWORD
+# and repository variables: PUBLIC_URL (https://<project>.vercel.app),
+#   STREAM_URL (wss://<service>.onrender.com/ws/market)
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full commit SHA to release (must be on main with a successful CI run)
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require a successful CI run for this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          conclusion=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=${SHA}&status=completed&per_page=1" --jq '.workflow_runs[0].conclusion')
+          echo "CI conclusion for ${SHA}: ${conclusion:-none}"
+          test "$conclusion" = "success"
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Require the commit to be the current head of main
+        # Vercel deploy hooks build the branch head; Render's hook pins ?ref=<sha>. Releasing only
+        # main's head keeps frontend and backend on the same validated commit.
+        run: test "$(git rev-parse origin/main)" = "${{ inputs.sha }}"
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-24.04
+    environment: production   # add required reviewers in GitHub settings for a manual gate
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.sha }}
+      - name: Trigger Render deploy of this commit
+        run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}&ref=${{ inputs.sha }}"
+      - name: Trigger Vercel production deploy
+        run: curl -fsS -X POST "${{ secrets.VERCEL_DEPLOY_HOOK_URL }}"
+      - name: Wait for the API to report ready (free tier may cold start)
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS "${{ vars.PUBLIC_URL }}/api/v1/health/ready"; then exit 0; fi
+            sleep 10
+          done
+          exit 1
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Public smoke checks (HTTPS + WSS with stream ticket)
+        env:
+          MARKETOPS_URL: ${{ vars.PUBLIC_URL }}
+          MARKETOPS_STREAM_URL: ${{ vars.STREAM_URL }}
+          DEMO_OPERATOR_PASSWORD: ${{ secrets.SMOKE_OPERATOR_PASSWORD }}
+        run: |
+          python -m venv /tmp/smoke && /tmp/smoke/bin/pip install -q httpx==0.28.1 websockets==17.2 python-dotenv==1.2.4
+          /tmp/smoke/bin/python scripts/smoke.py

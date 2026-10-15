@@ -13,8 +13,9 @@ with psycopg.connect(sys.argv[1], autocommit=True) as c:
 PY
 export MARKETOPS_DATABASE_URL="$DB_URL"
 export MARKETOPS_ENVIRONMENT=test
-export MARKETOPS_ALLOWED_ORIGINS='["http://localhost:5174","http://127.0.0.1:5174"]'
+export MARKETOPS_ALLOWED_ORIGINS="${MARKETOPS_ALLOWED_ORIGINS:-[\"http://localhost:5174\",\"http://127.0.0.1:5174\"]}"
 export MARKETOPS_WARMUP_SECONDS=3
+export MARKETOPS_PUBLIC_DEMO_ENABLED=true
 .venv/bin/alembic upgrade head
 .venv/bin/python -m app.seed
 exec .venv/bin/uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8001

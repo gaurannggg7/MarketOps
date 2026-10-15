@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 import { ErrorNotice, Spinner } from "../components/ui";
+import { WakingScreen } from "../components/WakingScreen";
 import { ApiError, errorMessage } from "../lib/api/client";
 import { LoginPage } from "../features/auth/LoginPage";
 import { useAuth } from "../lib/auth";
@@ -12,17 +13,12 @@ const InstrumentPage = lazy(() => import("../features/instrument/InstrumentPage"
 const IncidentsPage = lazy(() => import("../features/incidents/IncidentsPage"));
 const IncidentDetailPage = lazy(() => import("../features/incidents/IncidentDetailPage"));
 const SystemPage = lazy(() => import("../features/system/SystemPage"));
+const GuidePage = lazy(() => import("../features/guide/GuidePage"));
 
 function Authenticated() {
   const { user, loading, error, retry } = useAuth();
   const location = useLocation();
-  if (loading) {
-    return (
-      <div className="grid h-full place-items-center">
-        <Spinner label="Checking session…" />
-      </div>
-    );
-  }
+  if (loading) return <WakingScreen />;
   if (error && !user) {
     return (
       <div className="mx-auto mt-16 max-w-lg p-4">
@@ -56,6 +52,7 @@ export function App() {
           <Route path="incidents" element={<IncidentsPage />} />
           <Route path="incidents/:incidentId" element={<IncidentDetailPage />} />
           <Route path="system" element={<SystemPage />} />
+          <Route path="guide" element={<GuidePage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

@@ -26,6 +26,9 @@ from dotenv import dotenv_values
 BASE = os.environ.get("MARKETOPS_URL", "http://localhost:8080").rstrip("/")
 # Only for the local self-signed TLS overlay; never use against a real deployment.
 INSECURE = os.environ.get("MARKETOPS_SMOKE_INSECURE") == "1"
+# Split-origin hosting (Vercel + Render): the stream lives on another host and is authenticated
+# with a single-use ticket sent as the first message instead of the session cookie.
+STREAM_URL = os.environ.get("MARKETOPS_STREAM_URL")
 ROOT = Path(__file__).resolve().parent.parent
 results: list[tuple[str, bool, str]] = []
 
@@ -79,14 +82,21 @@ async def main() -> int:
         if not items:
             return 1
 
-        ws_url = BASE.replace("http", "ws", 1) + "/ws/market"
+        ws_url = STREAM_URL or BASE.replace("http", "ws", 1) + "/ws/market"
+        auth_message = None
+        if STREAM_URL:
+            t = await c.post("/api/v1/stream/ticket")
+            record("stream ticket issued", t.status_code == 200, f"HTTP {t.status_code}")
+            auth_message = json.dumps({"type": "auth", "ticket": t.json().get("ticket")})
         try:
             async with websockets.connect(
                 ws_url,
                 origin=origin,
-                additional_headers={"Cookie": f"marketops_session={cookie}"},
+                additional_headers={} if STREAM_URL else {"Cookie": f"marketops_session={cookie}"},
                 ssl=_ssl_context() if ws_url.startswith("wss") else None,
             ) as ws:
+                if auth_message:
+                    await ws.send(auth_message)
                 snap = json.loads(await asyncio.wait_for(ws.recv(), 5))
                 record(
                     "websocket upgrade + snapshot",

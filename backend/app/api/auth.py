@@ -140,19 +140,77 @@ async def session_state(request: Request, db: AsyncSession = Depends(get_session
     settings: Settings = request.app.state.settings
     token = request.cookies.get(settings.session_cookie_name)
     user = await resolve_session(db, settings, token, request.app.state.clock.now())
+    demo = settings.public_demo_enabled
     if user is None or token is None:
-        return SessionState(authenticated=False)
+        return SessionState(authenticated=False, demo_available=demo)
     sess = await db.get(DbSession, user.session_id)
     db_user = await db.get(User, user.id)
     if sess is None or db_user is None:
-        return SessionState(authenticated=False)
+        return SessionState(authenticated=False, demo_available=demo)
     return SessionState(
         authenticated=True,
+        demo_available=demo,
         session=SessionOut(
             user=UserOut.model_validate(db_user),
             csrf_token=derive_csrf_token(token),
             expires_at=sess.expires_at,
+            public_demo=sess.is_public_demo,
         ),
+    )
+
+
+@router.post("/demo", response_model=SessionOut, responses=_ERRORS)
+async def demo_login(
+    request: Request, response: Response, db: AsyncSession = Depends(get_session)
+) -> SessionOut:
+    """Issue a read-only public-demo session for the viewer account (only when enabled)."""
+    settings: Settings = request.app.state.settings
+    if not settings.public_demo_enabled:
+        raise AppError(404, "NOT_FOUND", "Public demo access is not enabled on this server.")
+    check_origin(request)
+    limiter: LoginThrottle = request.app.state.demo_throttle
+    key = f"demo|{request.client.host if request.client else '-'}"
+    retry = limiter.retry_after(key)
+    if retry:
+        raise AppError(
+            429,
+            "TOO_MANY_ATTEMPTS",
+            f"Too many demo sessions from this address. Try again in {retry} seconds.",
+            {"retry_after_seconds": retry},
+        )
+    limiter.record_failure(key)  # counts every demo session issued to this address
+    viewer = (
+        await db.execute(
+            select(User).where(
+                func.lower(User.email) == settings.public_demo_viewer_email.lower(),
+                User.role == Role.VIEWER,
+                User.is_active,
+            )
+        )
+    ).scalar_one_or_none()
+    if viewer is None:
+        raise AppError(503, "DEMO_UNAVAILABLE", "The demo viewer account is not configured.")
+    now = request.app.state.clock.now()
+    token = new_token()
+    csrf = derive_csrf_token(token)
+    expires_at = now + timedelta(hours=settings.public_demo_session_hours)
+    db.add(
+        DbSession(
+            token_hash=token_digest(token),
+            user_id=viewer.id,
+            csrf_token_hash=token_digest(csrf),
+            last_seen_at=now,
+            expires_at=expires_at,
+            is_public_demo=True,
+        )
+    )
+    await db.commit()
+    _set_cookie(response, settings, token, settings.public_demo_session_hours * 3600)
+    return SessionOut(
+        user=UserOut.model_validate(viewer),
+        csrf_token=csrf,
+        expires_at=expires_at,
+        public_demo=True,
     )
 
 

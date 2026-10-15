@@ -27,6 +27,7 @@ from app.services.market_math import fmt, mid_price, spread_bps
 CLOSE_RESYNC = 4000
 CLOSE_SCENARIO_DISCONNECT = 4001
 CLOSE_LOGGED_OUT = 4002
+CLOSE_TRY_AGAIN_LATER = 1013
 CLOSE_UNAUTHENTICATED = 4401
 CLOSE_FORBIDDEN_ORIGIN = 4403
 
@@ -87,8 +88,12 @@ def new_epoch() -> str:
 
 
 class StreamHub:
-    def __init__(self, queue_max: int) -> None:
+    def __init__(
+        self, queue_max: int, max_connections: int = 200, max_per_session: int = 4
+    ) -> None:
         self.queue_max = queue_max
+        self.max_connections = max_connections
+        self.max_per_session = max_per_session
         self.epoch = new_epoch()
         self.seq = 0
         self.quotes: dict[uuid.UUID, Quote] = {}
@@ -163,6 +168,15 @@ class StreamHub:
             separators=(",", ":"),
         )
         return payload, self.seq
+
+    def admission_error(self, session_id: uuid.UUID) -> str | None:
+        """Bounded fan-out: refuse new sockets beyond global and per-session caps."""
+        if len(self._connections) >= self.max_connections:
+            return "server_busy"
+        same = sum(1 for c in self._connections.values() if c.session_id == session_id)
+        if same >= self.max_per_session:
+            return "too_many_session_connections"
+        return None
 
     async def register(
         self, user_id: uuid.UUID, session_id: uuid.UUID, now: datetime

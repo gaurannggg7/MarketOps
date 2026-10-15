@@ -18,6 +18,7 @@ from typing import Any
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.auth.tickets import StreamTickets
 from app.clock import Clock
 from app.config import Settings
 from app.models import Instrument, MarketEvent, QuoteSample
@@ -58,7 +59,12 @@ class Runtime:
         self.settings = settings
         self.clock = clock
         self.sessionmaker = sessionmaker
-        self.hub = StreamHub(settings.client_queue_max)
+        self.hub = StreamHub(
+            settings.client_queue_max,
+            settings.max_stream_connections,
+            settings.max_stream_connections_per_session,
+        )
+        self.tickets = StreamTickets(settings.stream_ticket_ttl_seconds)
         self.simulator = Simulator(
             [],
             settings.simulator_seed,
@@ -82,6 +88,7 @@ class Runtime:
         self.task_failures: dict[str, str] = {}
         self.running = False
         self.symbols: dict[uuid.UUID, str] = {}
+        self.autopilot: Any = None
 
     # ---- lifecycle ----------------------------------------------------------------------
     async def load_instruments(self) -> None:
@@ -119,6 +126,11 @@ class Runtime:
         self._spawn("sampler", self._sampler_loop)
         self._spawn("evaluator", self._evaluator_loop)
         self._spawn("maintenance", self._maintenance_loop)
+        if self.settings.demo_autopilot_enabled:
+            from app.streaming.autopilot import DemoAutopilot  # optional demo helper
+
+            self.autopilot = DemoAutopilot(self)
+            self._spawn("autopilot", self.autopilot.run_forever)
 
     def _spawn(self, name: str, fn: Callable[[], Coroutine[Any, Any, None]]) -> None:
         task: asyncio.Task[None] = asyncio.create_task(fn(), name=f"marketops-{name}")
@@ -212,6 +224,9 @@ class Runtime:
                 if time.monotonic() - last_reload > 30:
                     self.evaluator.invalidate()
                     last_reload = time.monotonic()
+                if not self.symbols:
+                    # Started before the catalog was seeded (fresh database): pick it up.
+                    await self.load_instruments()
                 await self.evaluator.evaluate_once()
                 self.evaluator_health.ok(now)
             except Exception as exc:  # DB outage must not kill the evaluator loop

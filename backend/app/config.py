@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,7 +44,44 @@ class Settings(BaseSettings):
     max_scenario_seconds: int = 900
     default_scenario_seconds: int = 300
 
+    # Public portfolio demo (off by default). When enabled, POST /auth/demo issues a read-only
+    # session for the viewer account without a password; every write from it is rejected.
+    public_demo_enabled: bool = False
+    public_demo_viewer_email: str = "viewer@marketops.local"
+    public_demo_session_hours: int = 2
+    demo_login_max_per_window: int = 30
+    demo_login_window_seconds: int = 600
+    # Automated operator that periodically runs a scenario and walks the resulting incident
+    # through acknowledge → comment → resolve, so read-only visitors can watch the workflow.
+    demo_autopilot_enabled: bool = False
+    demo_autopilot_interval_seconds: int = 300
+    demo_autopilot_email: str = "autopilot@marketops.local"
+    api_docs_enabled: bool = True
+    # Split-origin hosting (frontend on another site, e.g. Vercel → Render): the browser cannot
+    # send the session cookie to the stream host, so it authenticates the socket with a
+    # single-use, short-lived ticket sent as the first WebSocket message (never in the URL).
+    # Run Alembic migrations and the idempotent seed inside the app process at startup (one
+    # Python import instead of three; matters on tiny CPUs such as Render Free's 0.1 vCPU).
+    startup_bootstrap: bool = False
+    stream_ticket_auth_enabled: bool = False
+    stream_ticket_ttl_seconds: int = 30
+    max_stream_connections: int = 200
+    max_stream_connections_per_session: int = 4
+
     log_level: str = "INFO"
+
+    @field_validator("database_url")
+    @classmethod
+    def _driver(cls, v: str) -> str:
+        return normalize_database_url(v)
+
+
+def normalize_database_url(url: str) -> str:
+    """Accept provider URLs (postgres://, postgresql://) and select the psycopg 3 driver."""
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix) :]
+    return url
 
 
 @lru_cache

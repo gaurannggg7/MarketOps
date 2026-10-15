@@ -108,8 +108,12 @@ jobs:
           backend/.venv/bin/pip install --require-hashes -r backend/requirements-dev.lock
       - working-directory: frontend
         run: npm ci && npx playwright install --with-deps chromium
-      - working-directory: frontend
+      - name: Playwright (same-origin topology)
+        working-directory: frontend
         run: npx playwright test
+      - name: Playwright (split-origin topology, stream tickets — Vercel + Render layout)
+        working-directory: frontend
+        run: npx playwright test -c playwright.split.config.ts
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -117,14 +121,46 @@ jobs:
           path: frontend/playwright-report
           retention-days: 7
 
+  secrets:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Secret scan (tracked files)
+        run: bash scripts/secret_scan.sh
+
   images:
     runs-on: ubuntu-24.04
     needs: [backend, frontend]
     steps:
       - uses: actions/checkout@v5
-      - name: Secret scan (tracked files)
-        run: bash scripts/secret_scan.sh
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
       - name: Build versioned images
         run: docker compose --profile app build
+      - name: Validate production compose file
+        run: |
+          cp deploy/.env.production.example /tmp/prod.env
+          sed -i 's/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=ci/; s/^DEMO_\(.*\)_PASSWORD=$/DEMO_\1_PASSWORD=ci-only-password/' /tmp/prod.env
+          docker compose -f deploy/docker-compose.prod.yml --env-file /tmp/prod.env config --quiet
+      - name: Start container stack (db + backend + nginx web) and seed
+        env:
+          DEMO_OPERATOR_PASSWORD: ci-only-operator-password
+          DEMO_OPERATOR2_PASSWORD: ci-only-operator2-password
+          DEMO_VIEWER_PASSWORD: ci-only-viewer-password
+        run: |
+          docker compose --profile app up -d --wait
+          docker compose --profile app exec -T backend python -m app.seed
+      - name: Smoke checks through nginx (:8080)
+        env:
+          DEMO_OPERATOR_PASSWORD: ci-only-operator-password
+          MARKETOPS_URL: http://localhost:8080
+        run: |
+          python -m venv /tmp/smoke && /tmp/smoke/bin/pip install -q httpx==0.28.1 websockets==17.2 python-dotenv==1.2.4
+          sleep 20  # stale-check warm-up so the incident check can fire
+          /tmp/smoke/bin/python scripts/smoke.py
+      - name: Container logs on failure
+        if: failure()
+        run: docker compose --profile app logs --tail 200
       - name: Image inventory
         run: docker image ls 'marketops-*'

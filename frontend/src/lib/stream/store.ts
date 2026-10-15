@@ -17,6 +17,7 @@ export interface SocketLike {
   onclose: ((ev: { code: number; reason?: string }) => void) | null;
   onerror: ((ev: unknown) => void) | null;
   close(code?: number, reason?: string): void;
+  send?(data: string): void;
 }
 
 export interface StreamOptions {
@@ -30,6 +31,11 @@ export interface StreamOptions {
   maxDelayMs?: number;
   /** Resubscribe quickly after a deliberate resync (gap/epoch/server request). */
   resyncDelayMs?: number;
+  /**
+   * Split-origin deployments: fetch a single-use stream ticket (cookie-authenticated REST call)
+   * before each connection and send it as the first message. Undefined = cookie auth.
+   */
+  getTicket?: () => Promise<string>;
 }
 
 export type QuoteListener = (changed: readonly Quote[], kind: "snapshot" | "delta") => void;
@@ -42,7 +48,9 @@ export class MarketStream {
   private timer: unknown = null;
   private attempt = 0;
   private running = false;
-  private readonly opts: Required<StreamOptions>;
+  private readonly opts: Required<Omit<StreamOptions, "getTicket">> & Pick<StreamOptions, "getTicket">;
+  /** Incremented on every connect/stop so late ticket responses for old attempts are ignored. */
+  private generation = 0;
   /** Wall-clock ms for which the next reconnect is scheduled (for UI countdowns). */
   nextRetryAt: number | null = null;
   /** Number of sockets created; useful to verify no duplicate connections in tests. */
@@ -91,6 +99,7 @@ export class MarketStream {
   /** Stop and release everything (logout, unmount). Safe to call repeatedly. */
   stop(): void {
     this.running = false;
+    this.generation += 1;
     this.clearTimer();
     this.detachSocket(1000, "client stop");
     this.nextRetryAt = null;
@@ -121,9 +130,34 @@ export class MarketStream {
       status: statusBefore === "resyncing" ? "resyncing" : "connecting",
       dataSuspect: true,
     });
+    const generation = ++this.generation;
+    const getTicket = this.opts.getTicket;
+    if (!getTicket) {
+      this.openSocket(null);
+      return;
+    }
+    getTicket().then(
+      (ticket) => {
+        if (this.running && generation === this.generation) this.openSocket(ticket);
+      },
+      () => {
+        // Backend asleep/unreachable (e.g. a free-tier cold start): back off and retry.
+        if (!this.running || generation !== this.generation) return;
+        this.attempt += 1;
+        this.schedule(this.backoffDelay(this.attempt), "reconnecting");
+      },
+    );
+  }
+
+  private openSocket(ticket: string | null): void {
     const socket = this.opts.createSocket(this.opts.url());
     this.socketsCreated += 1;
     this.socket = socket;
+    if (ticket !== null) {
+      socket.onopen = () => {
+        if (this.socket === socket) socket.send?.(JSON.stringify({ type: "auth", ticket }));
+      };
+    }
     socket.onmessage = (ev) => {
       if (this.socket !== socket) return;
       this.handleMessage(ev.data);
@@ -217,7 +251,11 @@ export class MarketStream {
   }
 }
 
+/** Build-time override for split-origin hosting, e.g. wss://marketops-api.onrender.com/ws/market. */
+export const configuredStreamUrl: string | undefined = (import.meta.env.VITE_STREAM_URL as string | undefined) || undefined;
+
 export function defaultStreamUrl(): string {
+  if (configuredStreamUrl) return configuredStreamUrl;
   const { protocol, host } = window.location;
   return `${protocol === "https:" ? "wss:" : "ws:"}//${host}/ws/market`;
 }

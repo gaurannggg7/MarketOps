@@ -20,3 +20,4 @@ benchmarks/out/
 .claude/settings.local.json
 frontend/.vitest/
 .claude/
+deploy/.env.production

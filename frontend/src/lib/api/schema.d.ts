@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/v1/auth/demo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Demo Login
+         * @description Issue a read-only public-demo session for the viewer account (only when enabled).
+         */
+        post: operations["demo_login_api_v1_auth_demo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -422,6 +442,26 @@ export interface paths {
         head?: never;
         /** Update Rule */
         patch: operations["update_rule_api_v1_rules__rule_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/stream/ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stream Ticket
+         * @description Single-use ticket (30 s) that authenticates one WebSocket as this session.
+         */
+        post: operations["stream_ticket_api_v1_stream_ticket_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/system/status": {
@@ -1060,6 +1100,11 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
+            /**
+             * Public Demo
+             * @default false
+             */
+            public_demo: boolean;
             user: components["schemas"]["UserOut"];
         };
         /**
@@ -1069,6 +1114,11 @@ export interface components {
         SessionState: {
             /** Authenticated */
             authenticated: boolean;
+            /**
+             * Demo Available
+             * @default false
+             */
+            demo_available: boolean;
             session?: components["schemas"]["SessionOut"] | null;
         };
         /**
@@ -1076,6 +1126,16 @@ export interface components {
          * @enum {string}
          */
         Severity: "HIGH" | "MEDIUM" | "LOW";
+        /** StreamTicketOut */
+        StreamTicketOut: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Ticket */
+            ticket: string;
+        };
         /** SystemStatus */
         SystemStatus: {
             /** Active Incidents */
@@ -1248,6 +1308,53 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    demo_login_api_v1_auth_demo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     login_api_v1_auth_login_post: {
         parameters: {
             query?: never;
@@ -2668,6 +2775,53 @@ export interface operations {
             };
             /** @description Unprocessable Content */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    stream_ticket_api_v1_stream_ticket_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamTicketOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

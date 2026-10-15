@@ -1,0 +1,103 @@
+# Production-style single-host stack for the public portfolio demo.
+#   cd deploy && cp .env.production.example .env.production && (edit) && \
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build --wait
+# Only Caddy publishes ports (80/443). PostgreSQL and the app containers stay on the private
+# Docker network. Exactly ONE backend container (ADR 0002).
+name: marketops-prod
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:17.11-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env.production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-marketops}
+    command: ["postgres", "-c", "max_connections=50", "-c", "shared_buffers=128MB",
+              "-c", "log_min_duration_statement=1000"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    mem_limit: 512m
+    cpus: 1.0
+    logging: *logging
+
+  backend:
+    build:
+      context: ../backend
+    image: marketops-backend:${MARKETOPS_VERSION:-1.1.0}
+    restart: unless-stopped
+    environment:
+      MARKETOPS_ENVIRONMENT: production
+      MARKETOPS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-marketops}
+      MARKETOPS_ALLOWED_ORIGINS: '["https://${MARKETOPS_DOMAIN:?set in .env.production}"]'
+      MARKETOPS_COOKIE_SECURE: "true"
+      MARKETOPS_PUBLIC_DEMO_ENABLED: ${MARKETOPS_PUBLIC_DEMO_ENABLED:-true}
+      MARKETOPS_DEMO_AUTOPILOT_ENABLED: ${MARKETOPS_DEMO_AUTOPILOT_ENABLED:-true}
+      MARKETOPS_DEMO_AUTOPILOT_INTERVAL_SECONDS: ${MARKETOPS_DEMO_AUTOPILOT_INTERVAL_SECONDS:-300}
+      MARKETOPS_API_DOCS_ENABLED: "false"
+      # History charts need at most 1 h; keep 3 h of sampled quotes to bound disk use.
+      MARKETOPS_QUOTE_RETENTION_HOURS: ${MARKETOPS_QUOTE_RETENTION_HOURS:-3}
+      MARKETOPS_LOG_LEVEL: INFO
+      DEMO_OPERATOR_PASSWORD: ${DEMO_OPERATOR_PASSWORD:?set in .env.production}
+      DEMO_OPERATOR2_PASSWORD: ${DEMO_OPERATOR2_PASSWORD:?set in .env.production}
+      DEMO_VIEWER_PASSWORD: ${DEMO_VIEWER_PASSWORD:?set in .env.production}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    mem_limit: 512m
+    cpus: 1.0
+    logging: *logging
+
+  web:
+    build:
+      context: ../frontend
+    image: marketops-web:${MARKETOPS_VERSION:-1.1.0}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    mem_limit: 96m
+    cpus: 0.5
+    logging: *logging
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      MARKETOPS_DOMAIN: ${MARKETOPS_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set in .env.production}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+    mem_limit: 128m
+    cpus: 0.5
+    logging: *logging
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

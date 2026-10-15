@@ -21,4 +21,5 @@ EXPOSE 8000
 # Exactly one worker: the simulator, sequence allocator, and connection registry are in-process
 # (ADR 0002). Do not add --workers or replicas without a shared broadcast design.
 ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Default command (in the entrypoint): uvicorn on ${PORT:-8000}, single worker.
+CMD []

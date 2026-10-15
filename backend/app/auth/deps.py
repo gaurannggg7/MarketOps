@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from fastapi import Depends, Request
-from sqlalchemy import select, update
+from sqlalchemy import ColumnElement, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.security import digest_matches, token_digest
@@ -19,6 +19,8 @@ from app.models import Session as DbSession
 
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 LAST_SEEN_WRITE_INTERVAL = timedelta(seconds=60)
+# Writes a read-only public-demo session may still make (no business data changes).
+PUBLIC_DEMO_ALLOWED_WRITES = frozenset({"/api/v1/auth/logout", "/api/v1/stream/ticket"})
 
 
 @dataclass(frozen=True)
@@ -29,6 +31,7 @@ class CurrentUser:
     role: Role
     session_id: uuid.UUID
     csrf_token_hash: str
+    public_demo: bool = False
 
     @property
     def is_operator(self) -> bool:
@@ -57,11 +60,22 @@ async def resolve_session(
     """Return the active session's user, applying idle and absolute expiry."""
     if not token:
         return None
+    return await _resolve(db, settings, DbSession.token_hash == token_digest(token), now)
+
+
+async def resolve_session_by_id(
+    db: AsyncSession, settings: Settings, session_id: uuid.UUID, now: datetime
+) -> CurrentUser | None:
+    """Same checks as resolve_session, for a session identified by a redeemed stream ticket."""
+    return await _resolve(db, settings, DbSession.id == session_id, now)
+
+
+async def _resolve(
+    db: AsyncSession, settings: Settings, condition: ColumnElement[bool], now: datetime
+) -> CurrentUser | None:
     row = (
         await db.execute(
-            select(DbSession, User)
-            .join(User, User.id == DbSession.user_id)
-            .where(DbSession.token_hash == token_digest(token))
+            select(DbSession, User).join(User, User.id == DbSession.user_id).where(condition)
         )
     ).first()
     if row is None:
@@ -82,6 +96,7 @@ async def resolve_session(
         role=user.role,
         session_id=sess.id,
         csrf_token_hash=sess.csrf_token_hash,
+        public_demo=sess.is_public_demo,
     )
 
 
@@ -103,6 +118,13 @@ async def current_user(request: Request, db: AsyncSession = Depends(get_session)
                 403,
                 "CSRF_REJECTED",
                 "Security token missing or expired. Reload the page and retry.",
+            )
+        if user.public_demo and request.url.path not in PUBLIC_DEMO_ALLOWED_WRITES:
+            raise AppError(
+                403,
+                "PUBLIC_DEMO_READ_ONLY",
+                "This is the read-only public demo. Changes are disabled; the automated demo "
+                "operator runs scenarios and incident actions for you to watch.",
             )
     request.state.user_id = str(user.id)
     return user

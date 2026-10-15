@@ -7,7 +7,17 @@ export class FakeSocket implements SocketLike {
   onclose: SocketLike["onclose"] = null;
   onerror: SocketLike["onerror"] = null;
   close = vi.fn<(code?: number, reason?: string) => void>();
+  readonly sent: string[] = [];
   constructor(readonly url: string) {}
+
+  send(data: string): void {
+    this.sent.push(data);
+  }
+
+  /** Simulate the connection opening. */
+  open(): void {
+    this.onopen?.({});
+  }
 
   /** Deliver a server message through the currently attached handler (no-op if detached). */
   emit(message: unknown): void {

@@ -16,6 +16,7 @@ import { gridTheme } from "../../components/grid";
 import { Button, EmptyState, ErrorNotice, Field, Input, Notice, Select, Spinner, Stat } from "../../components/ui";
 import { api, call, errorMessage, type Schemas } from "../../lib/api/client";
 import { fmtAge, fmtInt, fmtPrice, fmtTime } from "../../lib/format";
+import { useAuth } from "../../lib/auth";
 import { useMarketStream, useStream } from "../../lib/stream/context";
 import type { Quote } from "../../lib/stream/reducer";
 import { useNow } from "../../lib/useNow";
@@ -87,6 +88,7 @@ function FreshnessCell(p: ICellRendererParams<MonitorRow, Freshness>) {
 
 export default function MonitorPage() {
   const stream = useMarketStream();
+  const { publicDemo } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
@@ -254,6 +256,7 @@ export default function MonitorPage() {
     (p: ICellRendererParams<MonitorRow>) => {
       if (!p.data) return null;
       const row = p.data;
+      if (publicDemo) return <span aria-label={row.watched ? "In watchlist" : "Not in watchlist"} className={row.watched ? "text-amber-500" : "text-slate-300"}>{row.watched ? "★" : "☆"}</span>;
       const label = row.watched ? `Remove ${row.symbol} from ${activeWatchlist?.name ?? "watchlist"}` : `Add ${row.symbol} to ${activeWatchlist?.name ?? "watchlist"}`;
       return (
         <button
@@ -272,7 +275,7 @@ export default function MonitorPage() {
         </button>
       );
     },
-    [activeWatchlist, toggleMember],
+    [activeWatchlist, toggleMember, publicDemo],
   );
 
   const columnDefs = useMemo<ColDef<MonitorRow>[]>(
@@ -392,7 +395,7 @@ export default function MonitorPage() {
           <input type="checkbox" checked={staleOnly} onChange={(e) => setParam("stale", e.target.checked ? "1" : null)} className="h-4 w-4 accent-teal-700" />
           Stale only
         </label>
-        <NewWatchlist onCreated={(id) => setParam("target", id)} />
+        {publicDemo ? null : <NewWatchlist onCreated={(id) => setParam("target", id)} />}
         <div className="ml-auto flex items-end gap-2">
           <Field label="☆ adds to">
             {({ id }) => (

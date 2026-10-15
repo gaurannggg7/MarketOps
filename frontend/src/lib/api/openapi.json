@@ -1311,6 +1311,11 @@
             "title": "Expires At",
             "type": "string"
           },
+          "public_demo": {
+            "default": false,
+            "title": "Public Demo",
+            "type": "boolean"
+          },
           "user": {
             "$ref": "#/components/schemas/UserOut"
           }
@@ -1328,6 +1333,11 @@
         "properties": {
           "authenticated": {
             "title": "Authenticated",
+            "type": "boolean"
+          },
+          "demo_available": {
+            "default": false,
+            "title": "Demo Available",
             "type": "boolean"
           },
           "session": {
@@ -1355,6 +1365,25 @@
         ],
         "title": "Severity",
         "type": "string"
+      },
+      "StreamTicketOut": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "ticket": {
+            "title": "Ticket",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket",
+          "expires_at"
+        ],
+        "title": "StreamTicketOut",
+        "type": "object"
       },
       "SystemStatus": {
         "properties": {
@@ -1758,6 +1787,58 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/auth/demo": {
+      "post": {
+        "description": "Issue a read-only public-demo session for the viewer account (only when enabled).",
+        "operationId": "demo_login_api_v1_auth_demo_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Demo Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "operationId": "login_api_v1_auth_login_post",
@@ -3812,6 +3893,58 @@
         "summary": "Update Rule",
         "tags": [
           "rules"
+        ]
+      }
+    },
+    "/api/v1/stream/ticket": {
+      "post": {
+        "description": "Single-use ticket (30 s) that authenticates one WebSocket as this session.",
+        "operationId": "stream_ticket_api_v1_stream_ticket_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamTicketOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Stream Ticket",
+        "tags": [
+          "stream"
         ]
       }
     },

@@ -120,6 +120,10 @@ test("3. viewer cannot mutate through the UI or direct HTTP", async ({ page }) =
 });
 
 test("4. disconnect → resynchronization → live values resume without duplicate sockets", async ({ page }) => {
+  let ticketRequests = 0;
+  page.on("request", (req) => {
+    if (req.url().endsWith("/api/v1/stream/ticket")) ticketRequests += 1;
+  });
   const sockets: { url: string; closed: boolean }[] = [];
   page.on("websocket", (ws) => {
     const entry = { url: ws.url(), closed: false };
@@ -147,6 +151,12 @@ test("4. disconnect → resynchronization → live values resume without duplica
   expect(opened).toHaveLength(1);
   expect(opened[0]?.closed).toBe(false);
   expect(sockets.slice(0, openedBefore).filter((s) => !s.closed && s.url.endsWith("/ws/market")).length).toBeLessThanOrEqual(1);
+  if (process.env.E2E_EXPECT_STREAM_TICKETS === "1") {
+    // Split-origin mode: every socket (initial + reconnect) was authenticated by a fresh ticket.
+    expect(ticketRequests).toBeGreaterThanOrEqual(2);
+  } else {
+    expect(ticketRequests).toBe(0);
+  }
 });
 
 test("5. invalid threshold and stale-version edit show actionable messages", async ({ page }) => {
@@ -178,4 +188,28 @@ test("5. invalid threshold and stale-version edit show actionable messages", asy
   await expect(staleRule.getByText("Someone else changed this rule.")).toBeVisible();
   await staleRule.getByRole("button", { name: "Reload latest rule" }).click();
   await expect(page.getByRole("form", { name: "Stale quote rule" }).getByLabel("Threshold (seconds)")).toHaveValue("25");
+});
+
+test("6. public demo visitor is read-only (UI and API)", async ({ page }) => {
+  expectedStatuses = [403]; // the direct write attempt below must be rejected
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Explore the live demo (read-only)" }).click();
+  await expect(page.getByRole("heading", { name: "Market monitor" })).toBeVisible();
+  await expect(page.getByText("Public demo (read-only)")).toBeVisible();
+  await expect(page.getByRole("note")).toContainText("simulated");
+  await expect(page.getByText("Stream live").first()).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("note").getByRole("link", { name: "How to explore" }).click();
+  await expect(page.getByRole("heading", { name: "How to explore MarketOps" })).toBeVisible();
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "+ New watchlist" })).toHaveCount(0);
+  await page.goto("/system");
+  await expect(page.getByRole("button", { name: "Run scenario" })).toHaveCount(0);
+
+  const token = await csrf(page.request);
+  const r = await page.request.post("/api/v1/watchlists", {
+    headers: { "X-CSRF-Token": token, Origin: ORIGIN },
+    data: { name: "public visitor" },
+  });
+  expect(r.status()).toBe(403);
+  expect(((await r.json()) as { error: { code: string } }).error.code).toBe("PUBLIC_DEMO_READ_ONLY");
 });

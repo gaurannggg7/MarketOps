@@ -114,7 +114,7 @@ def demo_password(env_key: str) -> str | None:
     return None
 
 
-async def seed(db: AsyncSession, instruments: int) -> list[str]:
+async def seed(db: AsyncSession, instruments: int, update_passwords: bool = True) -> list[str]:
     notes: list[str] = []
     now = datetime.now(UTC)
     users: dict[str, User] = {}
@@ -133,7 +133,7 @@ async def seed(db: AsyncSession, instruments: int) -> list[str]:
                 is_active=True,
             )
             db.add(user)
-        elif password is not None:
+        elif password is not None and update_passwords:
             user.password_hash = hash_password(password)
         users[email] = user
     await db.flush()

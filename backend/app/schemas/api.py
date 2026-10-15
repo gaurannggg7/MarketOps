@@ -44,6 +44,7 @@ class SessionOut(BaseModel):
     user: UserOut
     csrf_token: str
     expires_at: datetime
+    public_demo: bool = False
 
 
 class SessionState(BaseModel):
@@ -51,6 +52,12 @@ class SessionState(BaseModel):
 
     authenticated: bool
     session: SessionOut | None = None
+    demo_available: bool = False
+
+
+class StreamTicketOut(BaseModel):
+    ticket: str
+    expires_at: datetime
 
 
 class OperatorOut(ApiModel):

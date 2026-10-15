@@ -159,7 +159,7 @@ async def test_logout_revokes_only_that_session(app: FastAPI) -> None:
 async def test_session_probe_reports_signed_out_without_401(client: AsyncClient) -> None:
     r = await client.get("/api/v1/auth/session")
     assert r.status_code == 200
-    assert r.json() == {"authenticated": False, "session": None}
+    assert r.json() == {"authenticated": False, "session": None, "demo_available": False}
     body = await login(client, OPERATOR)
     r = await client.get("/api/v1/auth/session")
     assert r.json()["authenticated"] is True

@@ -1,0 +1,20 @@
+# TLS termination with automatic Let's Encrypt certificates. Caddy proxies WebSocket upgrades
+# natively and replaces client-supplied X-Forwarded-For with the real client address.
+{
+	email {$ACME_EMAIL}
+}
+
+{$MARKETOPS_DOMAIN} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	reverse_proxy web:8080 {
+		flush_interval -1
+	}
+	log {
+		output stdout
+		format console
+	}
+}

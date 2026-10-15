@@ -42,6 +42,7 @@ ignore = ["S101", "B008"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S311"]
 "app/streaming/simulator.py" = ["S311"]
+"app/streaming/autopilot.py" = ["S311"]
 "app/seed.py" = ["S311"]
 "scripts/**" = ["S311"]
 

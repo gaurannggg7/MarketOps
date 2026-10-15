@@ -108,3 +108,8 @@ export function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return "Something went wrong.";
 }
+
+/** A sleeping/starting backend (free-tier cold start) rather than a real failure. */
+export function isWaking(error: unknown): boolean {
+  return error instanceof ApiError && [0, 502, 503, 504].includes(error.status) && error.code !== "PERSISTENCE_UNAVAILABLE";
+}

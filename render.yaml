@@ -1,0 +1,42 @@
+# Render Blueprint for the MarketOps API (Free instance). Apply only after authorization.
+# The frontend is on Vercel (frontend/vercel.json) and PostgreSQL on Neon (Free).
+services:
+  - type: web
+    name: marketops-api            # → https://marketops-api.onrender.com (update vercel.json if the name is taken)
+    runtime: docker
+    plan: free
+    region: virginia               # near Neon us-east-1 and Vercel iad1
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health/live
+    autoDeploy: false              # releases are deployed deliberately (see docs/deployment.md)
+    envVars:
+      - key: MARKETOPS_ENVIRONMENT
+        value: production
+      - key: MARKETOPS_DATABASE_URL          # Neon *direct* (non-pooler) connection string
+        sync: false
+      - key: MARKETOPS_ALLOWED_ORIGINS       # e.g. ["https://marketops.vercel.app"]
+        sync: false
+      - key: MARKETOPS_COOKIE_SECURE
+        value: "true"
+      - key: MARKETOPS_STREAM_TICKET_AUTH_ENABLED
+        value: "true"
+      - key: MARKETOPS_PUBLIC_DEMO_ENABLED
+        value: "true"
+      - key: MARKETOPS_DEMO_AUTOPILOT_ENABLED
+        value: "true"
+      - key: MARKETOPS_DEMO_AUTOPILOT_INTERVAL_SECONDS
+        value: "180"
+      - key: MARKETOPS_API_DOCS_ENABLED
+        value: "false"
+      - key: MARKETOPS_QUOTE_RETENTION_HOURS
+        value: "3"
+      - key: MARKETOPS_SEED_ON_START          # Render Free has no shell/one-off jobs
+        value: "1"
+      - key: DEMO_OPERATOR_PASSWORD
+        generateValue: true
+      - key: DEMO_OPERATOR2_PASSWORD
+        generateValue: true
+      - key: DEMO_VIEWER_PASSWORD
+        generateValue: true

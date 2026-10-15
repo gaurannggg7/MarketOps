@@ -10,6 +10,11 @@ export interface AuthValue {
   error: unknown;
   retry: () => void;
   isOperator: boolean;
+  /** Anonymous read-only public-demo session: every write is rejected by the server. */
+  publicDemo: boolean;
+  /** Whether this server offers the read-only public demo entry point. */
+  demoAvailable: boolean;
+  demoLogin: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
