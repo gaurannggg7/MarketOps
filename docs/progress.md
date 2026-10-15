@@ -62,6 +62,19 @@ no credentials) and CI execution on GitHub (requires a push, which needs owner p
 - [ ] Hosted deployment — blocked: needs owner authorization, hosting account, credentials
 - [ ] CI run on GitHub — blocked: requires pushing, which the owner has not authorized
 
+### M7 — Cloud, Docker, CI/CD completion (2026-10-15) — local work done; gates pending
+- [x] Public read-only demo sessions (migration 0002), rate-limited demo entry, demo autopilot
+- [x] $0 plan chosen: Vercel Hobby + Render Free + Neon Free (official docs checked; ADR 0006)
+- [x] Split-origin support: Vercel `/api` rewrite (same-origin cookies/CSRF) + direct WSS with single-use stream tickets
+- [x] Render readiness: `$PORT`, in-process bootstrap (cold start 101→51 s, wake 102→34 s at 0.1 CPU), `render.yaml`
+- [x] Fixed first-deploy bug: runtime started before seeding had an empty catalog (self-heal + seed-before-serve)
+- [x] Free-tier rehearsal (0.1 CPU/512 MB, TLS Postgres, prod build): smoke 8/8, restart→new epoch 35.8 s
+- [x] Production Compose fallback (Caddy TLS, limits, log rotation, backups) rehearsed: smoke 7/7
+- [x] CI: split-origin E2E, stack smoke, secret-scan job; manual gated `release.yml`
+- [x] Screenshots (docs/screenshots), README, deployment/readiness/evidence docs, tailored résumé DOCX (outside repo)
+- [ ] **Gate 1 — push** local commits to GitHub and confirm CI passes on GitHub (needs owner approval)
+- [ ] **Gate 2 — deploy** Neon/Render/Vercel, verify HTTPS/WSS/cookies/migrations/persistence/incident workflow, cloud restart test, add live URL (needs owner approval)
+
 ## Gate evidence
 
 ### M0–M3 (backend core, 2026-10-13)
@@ -87,8 +100,14 @@ no credentials) and CI execution on GitHub (requires a push, which needs owner p
   `make secrets-scan` → clean; `make images && make stack-up && make stack-seed && make smoke` →
   7/7; HTTPS overlay smoke → 7/7.
 
+### M7 local evidence (2026-10-15)
+See `docs/cloud-cicd-evidence.md` (commands, counts, rehearsal measurements).
+
 ## Next steps / continuation
-1. Owner decision: push to GitHub (then watch the first CI run; fix any Linux-only issues).
+1. Owner decision (Gate 1): push local commits `6774b1f..HEAD` to `main`; verify CI on GitHub.
+   Note: `main` on GitHub was pushed to `40a52aa` outside the agent session; the local pre-push
+   hook no longer exists (not recreated, per owner instruction not to modify it).
+1b. Owner decision (Gate 2): create Neon/Render/Vercel resources per `docs/deployment.md`.
 2. Optional: register individual AG Grid Community modules to shrink the ~1.1 MB grid chunk.
 3. Optional: keyset pagination for events if the fixture grows ≥1M rows.
 4. Human review using `docs/review-checklist.md`.

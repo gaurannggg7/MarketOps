@@ -77,3 +77,24 @@ ownership, acceptance commands, and a rule not to edit application code.
   to 10.00. Replaced with a true half-even case (1.245 → 1.24). Found by the test run.
 - Initial CSRF design rotated the token on every `/auth/me`, which would break multiple tabs;
   replaced before commit with a session-bound derived token (ADR 0003).
+
+---
+
+## 6. Deployment hardening and $0 hosting (2026-10-15, main agent, Opus 5.5)
+- **Task**: prepare a public portfolio deployment; requirements changed mid-task from a paid
+  single-host plan to $0 hosting (Vercel + Render Free + Neon Free).
+- **Research**: read official Render/Vercel/Neon/DigitalOcean docs and pricing pages. Vercel's
+  rewrite docs do not cover WebSocket upgrades, so the design does not depend on them (ADR 0006).
+- **Bugs found by rehearsing, not by reading code**:
+  | Bug | How found | Fix |
+  | --- | --- | --- |
+  | Fresh database: backend started before the seed → simulator had 0 instruments forever | production Compose rehearsal smoke: `seq 0`, no deltas | seed before serving + runtime self-heal; regression test |
+  | Cold start 101 s / wake 102 s at 0.1 CPU (three Python processes importing the stack) | timing under `docker run --cpus 0.1` | in-process bootstrap: 51 s / 34 s; test on an empty DB |
+  | Login page redirect raced the demo navigation | Playwright workflow 6 | land demo visitors on the monitor |
+  | Screenshot captured a loading frame | inspected the PNG (8.8 kB) | wait for the page heading |
+- **Not a bug, documented instead**: Starlette TestClient raises `CancelledError` if a test leaves
+  a socket context while the server is still streaming; reproduced outside pytest, fixed in tests
+  by closing the client socket.
+- **Verification**: `make check` (62 pytest, 84 Vitest), Playwright 6/6 in two topologies (ticket
+  usage asserted), smoke 7/7 (Compose + Caddy TLS), 8/8 (free-tier rehearsal), restart/recovery
+  measurement. Cost/latency of the agent session: unknown.

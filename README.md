@@ -1,5 +1,9 @@
 # MarketOps
 
+[![CI](https://github.com/gaurannggg7/MarketOps/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gaurannggg7/MarketOps/actions/workflows/ci.yml)
+
+**Live demo:** not deployed yet (configuration ready; see [deployment status](#deployment-status)).
+
 Market-data monitoring and incident management for a market-operations analyst: watch quote
 freshness and spreads, get an automatic incident when a feed goes stale or a spread blows out,
 investigate the evidence, acknowledge, comment, and resolve once the condition recovers, with a
@@ -26,9 +30,31 @@ full audit trail.
   database, and persistence health; operator-only scenarios (stale symbol, wide spread, recovery,
   disconnect my stream) that expire automatically; demo reset with typed confirmation.
 
-Screens are described in [docs/prototype/layouts.md](docs/prototype/layouts.md). No screenshots
-are committed yet; run the app locally to see them (the [demo script](docs/demo-script.md)
-walks through every screen).
+- **Public read-only demo mode**: visitors explore without an account; an automated, clearly
+  labelled demo operator runs a scenario every few minutes and works the incident through the
+  same audited API a human uses.
+
+## Screenshots
+Captured with Playwright from the running app (public demo session; synthetic data).
+
+| Market monitor (live AG Grid) | Incident detail + audit timeline |
+| --- | --- |
+| ![Market monitor](docs/screenshots/01-market-monitor.png) | ![Incident timeline](docs/screenshots/03-incident-detail-timeline.png) |
+| **Instrument: D3 charts, rules, events** | **System status: transport vs server health** |
+| ![Instrument detail](docs/screenshots/02-instrument-charts-rules.png) | ![System status](docs/screenshots/04-system-status.png) |
+
+More in [docs/screenshots/](docs/screenshots) (D3 chart close-up, incident list, guide, mobile).
+
+## Architecture
+```mermaid
+flowchart LR
+  B[Browser<br/>React · AG Grid · D3] -- "HTTPS /api/* (cookie + CSRF)" --> P[Single origin<br/>nginx or Vercel rewrite]
+  P --> API[FastAPI · one worker<br/>REST + simulator + rule evaluator]
+  B -- "WSS /ws/market<br/>snapshot + ordered deltas" --> API
+  API -- "SQLAlchemy (async), Alembic" --> DB[(PostgreSQL)]
+```
+Snapshot/sequence protocol, persistence boundaries, and restart behavior:
+[docs/architecture.md](docs/architecture.md). Hosting topology: [docs/deployment.md](docs/deployment.md).
 
 ## Stack
 React 19 · TypeScript (strict) · Vite 8 · React Router 8 · Tailwind 4 · TanStack Query 5 ·
@@ -69,7 +95,11 @@ make e2e          # Playwright: 5 workflows on an isolated DB and ports (5174/80
 make api-check    # OpenAPI → TypeScript contract drift check
 make secrets-scan
 ```
-Actual results, counts, and known gaps: [docs/testing.md](docs/testing.md).
+Latest local results (2026-10-15): **62** backend tests on PostgreSQL, **84** Vitest tests,
+**6** Playwright workflows in both the same-origin and the split-origin (Vercel + Render)
+topology. GitHub Actions run
+[38485052338](https://github.com/gaurannggg7/MarketOps/actions/runs/38485052338) passed on
+commit `40a52aa` (49 / 80 / 5 at that commit). Details and gaps: [docs/testing.md](docs/testing.md).
 Benchmark method and measured numbers: [docs/performance.md](docs/performance.md).
 
 ## Demo flow
@@ -86,8 +116,16 @@ charts → acknowledge and comment → recovery → resolve with a note → audi
 | [runbook](docs/runbook.md) | Stale feed, DB outage, dropped sockets, unhealthy deploy, restart, rollback |
 | [deployment](docs/deployment.md) | Environment, proxy/WebSocket requirements, steps, smoke checks, costs to verify |
 | [testing](docs/testing.md) · [performance](docs/performance.md) | Commands, fixtures, actual results, gaps |
+| [production readiness](docs/production-readiness.md) · [cloud & CI/CD evidence](docs/cloud-cicd-evidence.md) · [portfolio evidence](docs/portfolio-evidence.md) | Security posture, verified runs, pending items |
 | [ai-development-log](docs/ai-development-log.md) | How AI agents were used, verified, and corrected |
 | [progress](docs/progress.md) · [review checklist](docs/review-checklist.md) · [CHANGELOG](CHANGELOG.md) | Status, human-review items, release notes |
+
+## Deployment status
+Not deployed. The $0/month plan (Vercel Hobby frontend, Render Free API + WebSocket, Neon Free
+PostgreSQL) is configured and rehearsed locally under Render-Free-like limits (0.1 CPU / 512 MB):
+[docs/deployment.md](docs/deployment.md), evidence in
+[docs/cloud-cicd-evidence.md](docs/cloud-cicd-evidence.md). Free hosting sleeps after 15 minutes
+without visitors; the first visit then takes about 1–2 minutes while it wakes.
 
 ## Known limitations
 - **One backend worker/replica** by design (ADR 0002): feed, sequence, connections, scenarios and
@@ -96,5 +134,5 @@ charts → acknowledge and comment → recovery → resolve with a note → audi
 - Quote history is **sampled** (≤1 row per instrument per second, 24 h retention), not a tick
   archive; samples are not backfilled after a database outage.
 - One shared demo workspace; watchlists are per user, rules/incidents are shared. No multi-tenancy.
-- Not deployed anywhere; CI is defined but has not run on GitHub (nothing has been pushed).
+- Not deployed yet; CI has passed on GitHub for `40a52aa`, but the newest commits have not been pushed.
 - No human review yet; see [docs/review-checklist.md](docs/review-checklist.md).

@@ -1,5 +1,14 @@
 # Testing
 
+> **Update 2026-10-15:** latest local counts are 62 pytest, 84 Vitest, and 6 Playwright
+> workflows, run in both the same-origin and the split-origin (stream-ticket) topology. New
+> backend tests cover public-demo read-only sessions, demo-entry rate limiting, the autopilot's
+> full incident lifecycle, stream tickets (single use, expiry, logout revocation, Origin,
+> connection caps), Neon-style URLs, in-process bootstrap on an empty database, and the
+> late-seeded-catalog self-heal. GitHub Actions passed for `40a52aa`
+> ([run 38485052338](https://github.com/gaurannggg7/MarketOps/actions/runs/38485052338));
+> newer commits have not run in CI yet. The tables below describe the 2026-10-13 baseline.
+
 All results below were produced on 2026-10-13 on the machine in `docs/performance.md`
 (Apple M3, 8 cores, 16 GB, macOS 15.2), against PostgreSQL 17.11 in Docker. CI is defined in
 `.github/workflows/ci.yml` but has **not run on GitHub** (nothing has been pushed).
