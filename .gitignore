@@ -21,3 +21,6 @@ benchmarks/out/
 frontend/.vitest/
 .claude/
 deploy/.env.production
+
+# Allow the safe production environment template
+!deploy/.env.production.example
