@@ -251,7 +251,7 @@ export class MarketStream {
   }
 }
 
-/** Build-time override for split-origin hosting, e.g. wss://marketops-api.onrender.com/ws/market. */
+/** Build-time override for split-origin hosting, e.g. wss://marketops-api-hy19.onrender.com/ws/market. */
 export const configuredStreamUrl: string | undefined = (import.meta.env.VITE_STREAM_URL as string | undefined) || undefined;
 
 export function defaultStreamUrl(): string {

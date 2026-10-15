@@ -67,7 +67,7 @@ New → Web Service → connect `gaurannggg7/MarketOps`:
 
 | Field | Value |
 | --- | --- |
-| Name | `marketops-api` (gives `https://marketops-api.onrender.com`; if taken, see "If a name is taken") |
+| Name | `marketops-api` (Render assigned `https://marketops-api-hy19.onrender.com` because the plain name was taken) |
 | Branch | `main` |
 | Language / Runtime | **Docker** |
 | Region | **Virginia (US East)** |
@@ -118,13 +118,18 @@ Environment variable (Production; build-time):
 
 | Key | Value |
 | --- | --- |
-| `VITE_STREAM_URL` | `wss://marketops-api.onrender.com/ws/market` |
+| `VITE_STREAM_URL` | `wss://marketops-api-hy19.onrender.com/ws/market` |
 
 Nothing else: the API URL is not a build variable — `/api/*` is routed by the rewrite in
-`frontend/vercel.json` to `https://marketops-api.onrender.com/api/*`, and the CSP allows
-`connect-src 'self' wss://marketops-api.onrender.com`. Leave Deployment Protection at the default
+`frontend/vercel.json` to `https://marketops-api-hy19.onrender.com/api/*`, and the CSP allows
+`connect-src 'self' wss://marketops-api-hy19.onrender.com`. Leave Deployment Protection at the default
 (previews protected, production public). Preview deployments use other origins and are
 intentionally not allow-listed, so they cannot sign in or stream.
+
+### Deployed hostnames (2026-10-16)
+Frontend `https://market-ops.vercel.app`; API/stream `https://marketops-api-hy19.onrender.com`.
+`frontend/src/config/vercelConfig.test.ts` fails CI if the `/api` rewrite host and the CSP
+`connect-src` WebSocket host ever diverge again.
 
 ### If a name is taken
 If Render gives the service a different hostname, change it in three places and redeploy both:
@@ -135,13 +140,13 @@ the docs. If the Vercel URL differs, only `MARKETOPS_ALLOWED_ORIGINS` on Render 
 1. Push the reviewed local commits to `main` (CI must pass).
 2. Neon project → copy direct URL.
 3. Render service with the env vars (set `MARKETOPS_ALLOWED_ORIGINS` to the Vercel URL you chose).
-   First deploy migrates and seeds (~1–2 min at 0.1 CPU). Check `https://marketops-api.onrender.com/api/v1/health/ready` → 200.
+   First deploy migrates and seeds (~1–2 min at 0.1 CPU). Check `https://marketops-api-hy19.onrender.com/api/v1/health/ready` → 200.
 4. Vercel project with `VITE_STREAM_URL`; deploy.
 5. Verify (next section); record results in `docs/cloud-cicd-evidence.md`.
 
 ## Post-deployment verification
 ```bash
-MARKETOPS_URL=https://<project>.vercel.app MARKETOPS_STREAM_URL=wss://marketops-api.onrender.com/ws/market DEMO_OPERATOR_PASSWORD=<from Render> backend/.venv/bin/python scripts/smoke.py
+MARKETOPS_URL=https://<project>.vercel.app MARKETOPS_STREAM_URL=wss://marketops-api-hy19.onrender.com/ws/market DEMO_OPERATOR_PASSWORD=<from Render> backend/.venv/bin/python scripts/smoke.py
 ```
 ```bash
 cd frontend && PORTFOLIO_URL=https://<project>.vercel.app npx playwright test -c portfolio/playwright.portfolio.config.ts

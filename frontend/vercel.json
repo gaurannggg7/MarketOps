@@ -29,7 +29,7 @@
         { "key": "Strict-Transport-Security", "value": "max-age=31536000" },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://marketops-api.onrender.com; frame-ancestors 'none'"
+          "value": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://marketops-api-hy19.onrender.com; frame-ancestors 'none'"
         }
       ]
     }

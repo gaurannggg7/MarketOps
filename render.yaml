@@ -2,7 +2,7 @@
 # The frontend is on Vercel (frontend/vercel.json) and PostgreSQL on Neon (Free).
 services:
   - type: web
-    name: marketops-api            # → https://marketops-api.onrender.com (update vercel.json if the name is taken)
+    name: marketops-api            # deployed URL: https://marketops-api-hy19.onrender.com (Render added a suffix; vercel.json rewrite + CSP use it)
     runtime: docker
     plan: free
     region: virginia               # near Neon us-east-1 and Vercel iad1
